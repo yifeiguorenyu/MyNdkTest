@@ -33,7 +33,7 @@ void child_listen_msg();
 
 //---------------------
 int m_child;
-
+const char *userId;
 //定义一个文件 套接字
 const char *PATH = "data/data/com.yifei.ndktest/my.sock";
 
@@ -51,12 +51,12 @@ int child_create_channel() {
     //创建一个socket
     int lisentd = socket(AF_LOCAL, SOCK_STREAM,
                          0);  // int  socket(int protofamily, int type, int protocol);//返回sockfd
-
+    unlink(PATH);
     // addr 指向的内存区
     struct sockaddr_un addr;
     memset(&addr, 0, sizeof(sockaddr_un)); //清空内存区域
     addr.sun_family = AF_LOCAL;
-    stpcpy(addr.sun_path, PATH);
+    strcpy(addr.sun_path, PATH);
     int confd = 0;
     //绑定一个socket
     int bindId = bind(lisentd, reinterpret_cast<const sockaddr *>(&addr), sizeof(sockaddr_un));
@@ -91,7 +91,7 @@ int child_create_channel() {
 //读
 void child_listen_msg() {
     fd_set rfds;
-    struct timeval timeout ={3,0};
+    struct timeval timeout={3,0};
     while (1) {
 
         // 清空内容
@@ -107,8 +107,9 @@ void child_listen_msg() {
             if(FD_ISSET(m_child,&rfds)){
                 //阻塞式函数 什么都不读
                 int result=read(m_child,pkg, sizeof(pkg));
-                execlp("am","am","startservice","");
+                execlp("am","am","startservice","--user",userId,"com.yifei.ndktest/com.yifei.ndktest.ProcessService",(char*)NULL);
             }
+            break;
         }
 
     }
@@ -120,7 +121,7 @@ void child_listen_msg() {
 extern "C"
 JNIEXPORT void JNICALL
 Java_com_yifei_ndktest_Watcher_createWetcher(JNIEnv *env, jobject instance, jstring userId_) {
-    const char *userId = env->GetStringUTFChars(userId_, 0);
+   userId = env->GetStringUTFChars(userId_, 0);
     //开启双进程 fork后一个函数会有两个返回值
     pid_t pid = fork();
 
@@ -138,3 +139,34 @@ Java_com_yifei_ndktest_Watcher_createWetcher(JNIEnv *env, jobject instance, jstr
     env->ReleaseStringUTFChars(userId_, userId);
 }
 
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_yifei_ndktest_Watcher_connectWonitor(JNIEnv *env, jobject instance) {
+
+    int socked;
+    struct sockaddr_un addr;
+    while (1){
+
+        LOGW("客户端父进程开始连接");
+        socked = socket(AF_LOCAL, SOCK_STREAM, 0);
+        if (socked < 0) {
+            LOGW("连接失败");
+            return;
+        }
+        memset(&addr, 0, sizeof(sockaddr_un));
+        addr.sun_family = AF_LOCAL;
+        strcpy(addr.sun_path, PATH);
+
+        if(connect(socked, (const sockaddr *)(&addr), sizeof(sockaddr_un)) < 0){
+            LOGW("连接失败");
+            //如果连接失败了就关闭当前socked，休眠一秒重新开始连接
+            close(socked);
+            sleep(1);
+            continue;
+        }
+        LOGW("连接成功");
+
+        break;
+    }
+
+}
